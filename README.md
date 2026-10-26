@@ -1,72 +1,101 @@
-# Muse Gadget Firmware — Waveshare ESP32-S3-Touch-LCD-1.54
+<!-- This fork tracks facebookincubator/muse-gadget-sdk and adds the Waveshare ESP32-S3-Touch-LCD-1.54. -->
 
-Waveshare ESP32-S3-Touch-LCD-1.54 보드를 Muse 전용 가젯으로 만드는 펌웨어다.
-Meta의 오픈소스 muse-gadget-sdk(기준 커밋 `74a5e2d`)에 이 보드용 포트와
-OpenRouter TTS를 얹은 것이다. 이 보드는 SDK 지원 목록에 없어서 디스플레이
-드라이버부터 직접 포팅했다. 벤더 BSP는 ESP Component Registry에 없으므로
-패널·터치·코덱을 직접 구동한다(AIPI Lite 패턴).
+# Muse Gadget Firmware
 
-## 디바이스 한눈에 보기
+Waveshare ESP32-S3-Touch-LCD-1.54용 트리다. 최신 muse-gadget-sdk에 그 보드 포트를 얹었다.
+빌드·플래시: `esp32/`에서 `tools/muse/board.sh build s3154`, `tools/muse/board.sh flash s3154`.
+핀·부팅 확인: [docs/waveshare-s3-154](docs/waveshare-s3-154/build-flash.md).
 
-| 항목 | 스펙 |
+<!--
+Copyright (c) Meta Platforms, Inc. and affiliates.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# Muse Gadgets
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/images/muse-gadgets-dark.png">
+    <img src=".github/images/muse-gadgets-light.png" width="900" alt="Muse gadgets: a Waveshare round AMOLED, an M5Stack StickS3, Muse Home Link, a Raspberry Pi and a Seeed reTerminal e-ink display">
+  </picture>
+</p>
+
+Muse gadgets are open source devices you build yourself. Program an
+off-the-shelf ESP32 board or set up a Raspberry Pi with our device SDKs, then
+connect Muse to your displays, buttons, sensors, actuators, and whatever else
+you've got lying on your workbench.
+
+We open sourced the SDKs and firmware here. It's built by hackers, for hackers,
+just for fun. Side effects of tinkering may include bricked boards, voided
+warranties, brownouts, or bankruptcies. Proceed at your own risk!
+
+| | |
 |---|---|
-| SoC | ESP32-S3R8 |
-| 플래시 / PSRAM | 16 MB / 8 MB octal PSRAM |
-| 디스플레이 | 1.54" 240×240 ST7789 TFT, SPI |
-| 터치 | CST816S, I2C |
-| 오디오 | ES8311 스피커(앰프 NS4150B) + ES7210 듀얼 마이크 ADC, 듀플렉스 I2S |
-| 기타 | QMI8658 IMU, microSD, 버튼 3개 |
-| 전원 | PMU 없음, GPIO2 배터리 래치 |
-| 보드 파일 | `esp32/components/muse/boards/board_waveshare_s3_154.c` |
-| 설정 오버레이 | `esp32/devices/sdkconfig.muse-waveshare-s3-154` |
+| [**ESP32 Device SDK**](esp32) | Connect your ESP32 board to Muse through our open source SDK. Throw in a screen to show images, add audio in and out, or wire up other sensors. |
+| [**Linux Device SDK**](linux) | Turn that spare Raspberry Pi or Linux box into a Muse gadget. Hack in your own commands to let Muse handle sysadmin chores or your Home Assistant setup. |
+| [**Muse Gadgets Test**](android/musegadgetstest) ([iPhone](ios/musegadgetstest)) | Stream your phone's camera, or a clip, to an ESP32 gadget's screen over Wi-Fi: H.264 or VP8 decoded on the board, 30 fps on the round 466 px boards. [`protocols/VIDEO.md`](protocols/VIDEO.md) explains how. |
 
-자세한 핀맵과 주변장치는 [docs/waveshare-s3-154/hardware.md](docs/waveshare-s3-154/hardware.md)를 본다.
+Before you flash or pair a gadget, get an
+[SDK token](https://gadgets.muse.ai/settings/sdk-tokens) and review the
+[Gadget SDK Terms](https://gadgets.muse.ai/sdk-terms). Every gadget needs a
+token to pair.
 
-## 빠른 시작
+ESP32 and Linux gadgets pair with the Muse app on iOS and Android, via
+Settings > Devices. Turn on Developer mode there first, then look for devices
+prefixed with "MuseGadget".
+Each directory has a `README.md` to get started and an `AGENTS.md` for coding
+agents like [Muse Code](https://developer.meta.com/ai/lp/muse-code/).
 
-전제 조건: ESP-IDF v6.0.1, SDK 토큰(`mgst_…`, gadgets.muse.ai > Account >
-SDK tokens). 토큰은 절대 커밋하거나 전문을 노출하지 않는다.
+For battery-input power profiling, see the [porting recipe](esp32/docs/power/README.md).
+The opt-in diagnostic core is board-neutral; boards supply its hooks and state
+matrices, and [power_sweep.py](esp32/tools/power/power_sweep.py) drives the
+USB-free sweep. The isolated diagnostic does not pair or need an SDK token;
+fixture safety and explicit hardware authorization still come first, as the
+[PPK2 rules](esp32/docs/power/ppk2.md) describe.
 
-```sh
-# ESP-IDF 활성화 후, esp32/ 디렉토리에서 수동 빌드 (이 보드는 board.sh 프로파일이 없다)
-idf.py -B build-muse-waveshare-s3-154 -DIDF_TARGET=esp32s3 \
-  -DSDKCONFIG=build-muse-waveshare-s3-154/sdkconfig \
-  -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;devices/sdkconfig.muse;devices/sdkconfig.muse-waveshare-s3-154" build
-idf.py -B build-muse-waveshare-s3-154 -p PORT flash
-idf.py -B build-muse-waveshare-s3-154 -p PORT monitor
-```
+## Community
 
-빌드·플래시·모니터·파티션·함정은
-[docs/waveshare-s3-154/build-flash.md](docs/waveshare-s3-154/build-flash.md),
-음성 TTS는
-[docs/waveshare-s3-154/voice-tts.md](docs/waveshare-s3-154/voice-tts.md),
-OTA·페어링은
-[docs/waveshare-s3-154/ota-pairing.md](docs/waveshare-s3-154/ota-pairing.md),
-그동안 겪은 문제와 해결은
-[docs/waveshare-s3-154/troubleshooting.md](docs/waveshare-s3-154/troubleshooting.md)를 본다.
+Meet other hackers who are building and customizing Muse gadgets in our
+community [Discord](https://discord.gg/3bhjCkZdd6). Get inspired, support each
+other, and share what you make.
 
-## OTA 릴리스
+## License
 
-- 태그: `gadget-waveshare-s3-154-v1`, 바이너리 1.3 MB
-- URL: https://github.com/parkjangwon/muse-gadget-firmware/releases/download/gadget-waveshare-s3-154-v1/muse-gadget-waveshare-s3-154.bin
-- BLE `device.ota` 명령에 이 URL을 넣어 트리거한다.
+Muse Gadgets is licensed under the Apache License, Version 2.0, found in
+[`LICENSE`](LICENSE), except for these third-party files, which keep their
+upstream licenses:
 
-## 동작 확인 이력 (날짜 기준, 현재 상태 단정 아님)
+| Path | Upstream | License |
+|---|---|---|
+| [`esp32/components/minimp3/include/minimp3.h`](esp32/components/minimp3) | [lieff/minimp3](https://github.com/lieff/minimp3) | CC0-1.0, see [`LICENSE`](esp32/components/minimp3/LICENSE) |
+| [`esp32/components/muse/boards/ostb_echoear_display_init.h`](esp32/components/muse/boards/ostb_echoear_display_init.h) | [78/xiaozhi-esp32 ESP-VoCat panel sequence](https://github.com/78/xiaozhi-esp32/blob/0d576d3d4c049c6f55eaf879725dc23e516511b4/main/boards/espressif/esp-vocat/esp_vocat.cc) | MIT, retained in the file header |
+| [`esp32/main/pixel_font.c`](esp32/main/pixel_font.c) | Adafruit GFX `glcdfont.c` | BSD-2-Clause, in the file header |
+| [`esp32/main/epd_ssd1677.c`](esp32/main/epd_ssd1677.c) | Seeed-reTerminal-E10xx-Firmware's SSD1677 refresh sequence | MIT, retained in the file header |
+| [`esp32/components/tinyh264/src`](esp32/components/tinyh264) | the Android Open Source Project's H.264 decoder, via [udevbe/tinyh264](https://github.com/udevbe/tinyh264) | Apache-2.0, AOSP's copyright, see [`LICENSE`](esp32/components/tinyh264/LICENSE) |
+| [`esp32/components/libvpx_vp8/src`](esp32/components/libvpx_vp8) | [libvpx](https://chromium.googlesource.com/webm/libvpx) v1.16.0's VP8 decoder, trimmed | BSD-3-Clause, the WebM Project authors' copyright, see [`LICENSE`](esp32/components/libvpx_vp8/LICENSE), with Google's patent grant in [`PATENTS`](esp32/components/libvpx_vp8/PATENTS) |
 
-- 2026-10-06: 빌드·플래시 성공, 첫 부팅 AUDIO INIT FAILED 2건 수정 후
-  Wi-Fi/BLE 페어링 완료, 화면 `ready` 확인.
-- 2026-10-06 01:46: OTA용 빌드 성공, 위 릴리스 발행.
-- 2026-10-08: erase-flash 후 복구 플래시 완료, BLE advertising 중·Wi-Fi
-  미설정(페어링 대기) 상태가 마지막 확인 상태다. 이후 상태는 이 문서가
-  보장하지 않는다.
-- 남은 설정(2026-10-08 기준): OpenRouter 키 미설정(자막만 나옴),
-  폰으로 BLE 페어링 + Wi-Fi 설정, 키 설정 후 OTA로 `af_heart` 보이스 적용.
+Dependencies fetched at build time are under their own licenses: ESP-IDF
+components (into `esp32/managed_components/`), and the simulator's LVGL and
+SDL (listed in [`esp32/simulator/THIRD_PARTY.md`](esp32/simulator/THIRD_PARTY.md)).
 
-## 라이선스·주의
+The Apache License does not cover the [Jollybot avatar](esp32/avatar).
 
-- 업스트림 muse-gadget-sdk는 Apache 2.0이다. 서드파티 코드(`minimp3.h` CC0,
-  `main/pixel_font.c` BSD-2-Clause)는 기존 라이선스 헤더를 유지한다.
-- Jollybot 아바타(`avatar/`)는 Apache 대상이 아니다. 헤더를 바꾸지 않는다.
-- 문서·화면·로그·설정 라벨에는 Muse라는 이름만 쓴다.
-- Secure Boot는 켜지 않는다. 앱은 커밋된 `dev_signing_key.pem`으로 서명되며
-  eFuse를 굽지 않으므로 계속 다시 플래시할 수 있다.
+Muse Gadgets Test's sample clips aren't in this repository: the app fetches a few
+seconds of the Blender Foundation's open movies (CC BY 3.0) when one is
+played, and shows their credits.
+
+Muse Gadgets Test can use x264 (GPL-2.0) on the phone; this repository carries none
+of its code. An APK or iPhone app you build with it is under the GPL
+([`android/musegadgetstest/README.md`](android/musegadgetstest/README.md),
+[`ios/musegadgetstest/README.md`](ios/musegadgetstest/README.md)).

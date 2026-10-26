@@ -15,16 +15,16 @@
   Muse가 토큰을 요구하기 시작하면 페어링이 멈춘다.
   **토큰은 절대 커밋하거나 전문을 출력하지 않는다.**
 
-## 빌드 (수동, 이 보드는 board.sh 프로파일이 없다)
+## 빌드
 
-`esp32/` 디렉토리에서 실행한다. 오버레이는
-`devices/sdkconfig.muse`와 `devices/sdkconfig.muse-waveshare-s3-154`를
-순서대로 얹는다.
+`esp32/`에서 실행한다. 헬퍼가 ESP-IDF v6.0.1을 찾고
+`devices/sdkconfig.muse` 다음 `devices/sdkconfig.muse-waveshare-s3-154`를 얹는다.
+로그는 `/tmp/muse_build_s3154.log`다.
 
 ```sh
-idf.py -B build-muse-waveshare-s3-154 -DIDF_TARGET=esp32s3 \
-  -DSDKCONFIG=build-muse-waveshare-s3-154/sdkconfig \
-  -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;devices/sdkconfig.muse;devices/sdkconfig.muse-waveshare-s3-154" build
+export IDF_EXPORT="$HOME/esp/esp-idf-v6/export.sh"   # 이미 v6.0.1이면 생략
+unset IDF_PYTHON_ENV_PATH
+tools/muse/board.sh build s3154
 ```
 
 참고로 맥미니 빌드 환경에서는 `build-waveshare` 디렉토리를 썼다.
@@ -41,7 +41,7 @@ idf.py -B build-muse-waveshare-s3-154 -DIDF_TARGET=esp32s3 \
 ## 플래시
 
 ```sh
-idf.py -B build-muse-waveshare-s3-154 -p PORT flash
+tools/muse/board.sh flash s3154          # 포트는 USB Serial/JTAG로 찾는다
 idf.py -B build-muse-waveshare-s3-154 -p PORT monitor   # Ctrl-] 로 종료
 ```
 

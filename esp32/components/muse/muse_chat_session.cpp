@@ -52,7 +52,6 @@
 #include "esp_attr.h"
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
-#include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -93,11 +92,18 @@ static const char *TAG = "muse_chat_session";
 #define NDJSON_LINE_MAX (16 * 1024)               /* one NDJSON line / the chat ack */
 #define SUB_LINE_MAX (256 * 1024)          /* an event line grows its buffer up to this */
 #define CHAT_PART (16 * 1024)              /* one body chunk of a long typed message */
+#if CONFIG_MUSE_HATCH_COMPACT_BUFFERS       /* 2 MB of PSRAM: see its Kconfig help */
+#define MP3_BUF (128 * 1024)
+#define IN_BYTES (MIC_RATE * 2 * 2)        /* 2 s of mic backlog while connecting */
+#define OUT_BYTES (MIC_RATE * 2 * 1)       /* 1 s of decoded reply */
+#else
 #define MP3_BUF (512 * 1024)
-#define MP3_HOLD (1441 + 4)               /* the largest MP3 frame and the next header */
-#define MP3_POLL_ROOM (SCRATCH + 8192)     /* stop reading the socket below this much MP3 room */
 #define IN_BYTES (MIC_RATE * 2 * 8)        /* 8 s of mic backlog while connecting */
 #define OUT_BYTES (MIC_RATE * 2 * 2)       /* 2 s of decoded reply */
+#endif
+#define MP3_HOLD (1441 + 4)               /* the largest MP3 frame and the next header */
+#define MP3_POLL_ROOM (SCRATCH + 8192)     /* stop reading the socket below this much MP3 room */
+static_assert(MP3_BUF > MP3_POLL_ROOM + MP3_HOLD, "reads would stall with the MP3 buffer empty");
 #define EV_TEXT 72
 #define TEXT_MAX 1024                      /* a message's text, for captions timed to its speech */
 #define SPEECH_CHARS_PER_S 14              /* until the speech's length is known */
@@ -891,9 +897,9 @@ static bool ensure_connected(void)
         }
         int status;
         if (connect_once(err, sizeof(err), &status)) {
-            char detail[48] = "Connected to ";
-            strlcat(detail, s_vm.vm_name[0] ? s_vm.vm_name : s_vm.vm_id, sizeof(detail));
-            muse_hatch_report(MUSE_HATCH_REACHABLE, detail);
+            /* The settings page shows the VM in its VM ID row. */
+            muse_hatch_report_vm(s_vm.vm_id);
+            muse_hatch_report(MUSE_HATCH_REACHABLE, "");
             return true;
         }
         disconnect(err);
@@ -1502,93 +1508,6 @@ static void on_chat_ack(stream_t *s)
 
 /* ---- Turn: speech ---- */
 
-/* OpenRouter TTS: POSTs the reply text, streams the MP3 back into tts_data().
- * Runs on the chat task; the 60 s dead-connection timeout comfortably covers
- * a TTS round trip. Returns true if usable audio arrived. */
-#define TTS_URL "https://openrouter.ai/api/v1/audio/speech"
-
-static void tts_data(const uint8_t *data, size_t len);
-
-static esp_err_t tts_http_event(esp_http_client_event_t *evt)
-{
-    if (evt->event_id == HTTP_EVENT_ON_DATA && evt->data_len > 0) {
-        tts_data((const uint8_t *)evt->data, evt->data_len);
-    }
-    return ESP_OK;
-}
-
-static bool fetch_tts_openrouter(const char *text)
-{
-    if (!text || !text[0]) {
-        return false;
-    }
-    const char *key = CONFIG_MUSE_OPENROUTER_KEY;
-    if (!key || !key[0]) {
-        ESP_LOGW(TAG, "TTS: no OpenRouter key (CONFIG_MUSE_OPENROUTER_KEY)");
-        return false;
-    }
-
-    cJSON *root = cJSON_CreateObject();
-    if (!root) {
-        return false;
-    }
-    cJSON_AddStringToObject(root, "model", CONFIG_MUSE_TTS_MODEL);
-    cJSON_AddStringToObject(root, "input", text);
-    cJSON_AddStringToObject(root, "voice", CONFIG_MUSE_TTS_VOICE);
-    cJSON_AddStringToObject(root, "response_format", "mp3");
-    char *payload = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    if (!payload) {
-        return false;
-    }
-
-    char auth[160];
-    snprintf(auth, sizeof(auth), "Bearer %s", key);
-
-    esp_http_client_config_t cfg = {};
-    cfg.url = TTS_URL;
-    cfg.method = HTTP_METHOD_POST;
-    cfg.timeout_ms = 30000;
-    cfg.buffer_size = 4096;
-    cfg.buffer_size_tx = 2048;
-    cfg.event_handler = tts_http_event;
-    cfg.crt_bundle_attach = esp_crt_bundle_attach;
-    cfg.disable_auto_redirect = true;
-    esp_http_client_handle_t c = esp_http_client_init(&cfg);
-    if (!c) {
-        free(payload);
-        return false;
-    }
-    esp_http_client_set_header(c, "Authorization", auth);
-    esp_http_client_set_header(c, "Content-Type", "application/json");
-    esp_http_client_set_header(c, "HTTP-Referer", "https://muse.ai");
-    esp_http_client_set_header(c, "X-Title", "Muse Gadget");
-    esp_http_client_set_post_field(c, payload, strlen(payload));
-
-    int64_t t0 = now_us();
-    esp_err_t err = esp_http_client_perform(c);
-    int status = esp_http_client_get_status_code(c);
-    int sock_errno = esp_http_client_get_errno(c);
-    int64_t ms = (now_us() - t0) / 1000;
-    esp_http_client_cleanup(c);
-    free(payload);
-
-    // Wipe the key from the stack.
-    memset(auth, 0, sizeof(auth));
-
-    if (err != ESP_OK || status != 200) {
-        ESP_LOGW(TAG, "TTS: OpenRouter HTTP %d err=%d sock_errno=%d in %lld ms",
-                 status, (int)err, sock_errno, (long long)ms);
-        return false;
-    }
-    if (s_turn.mp3_len < 1024) {
-        ESP_LOGW(TAG, "TTS: suspiciously short MP3 (%u bytes)", (unsigned)s_turn.mp3_len);
-        return false;
-    }
-    ESP_LOGI(TAG, "TTS: %u bytes MP3 in %lld ms", (unsigned)s_turn.mp3_len, (long long)ms);
-    return true;
-}
-
 static void start_tts(void)
 {
     if (s_turn.tts_msg >= 0) {
@@ -1599,28 +1518,26 @@ static void start_tts(void)
         if (m.tts != TTS_QUEUED) {
             continue;
         }
-        /* Replies are spoken via OpenRouter TTS. If the fetch fails (no key,
-         * network trouble), fall back to the stock behavior: text shown at
-         * reading pace, paced by silence. */
+        /*
+         * Replies are text, shown at reading pace: silence in place of speech
+         * paces the captions and ends the turn. To speak them instead, send
+         * the message's text (s_turn.texts + i * TEXT_MAX, if texts was
+         * allocated; up to TEXT_MAX - 1 bytes) to a TTS API of your choice and
+         * play the MP3 it returns. In place of the silence below: keep
+         * m.tts = TTS_ACTIVE and s_turn.tts_msg = i, set s_turn.silent = false,
+         * m.pcm_start = s_turn.pcm_out, m.pcm_frames = 0, s_turn.mp3_len = 0,
+         * s_turn.mp3_ended = false, s_turn.kbps = 0, s_turn.down_rate = 0 and
+         * mp3dec_init(&s_turn.dec). Then, on this task, pass the MP3 to
+         * tts_data() as it arrives (it buffers up to MP3_BUF and drops the
+         * rest, so hold off while it's full) and set s_turn.mp3_ended at the
+         * end. decode() plays it at the speaker's volume, captions following,
+         * and finishes the message once it's drained.
+         */
         m.pcm_start = s_turn.pcm_out;
-        m.pcm_frames = 0;
+        m.pcm_frames = (uint32_t)(m.len * MIC_RATE / TEXT_CHARS_PER_S);
         m.tts = TTS_ACTIVE;
         s_turn.tts_msg = i;
-        s_turn.silent = false;
-        s_turn.mp3_len = 0;
-        s_turn.mp3_ended = false;
-        s_turn.kbps = 0;
-        s_turn.down_rate = 0;
-        mp3dec_init(&s_turn.dec);
-        const char *text = s_turn.texts ? s_turn.texts + i * TEXT_MAX : "";
-        if (fetch_tts_openrouter(text)) {
-            s_turn.mp3_ended = true;   /* decode() drains the buffer, then finishes */
-        } else {
-            /* TTS unavailable: silence paces the captions, as stock. */
-            s_turn.mp3_len = 0;
-            s_turn.silent = true;
-            m.pcm_frames = (uint32_t)(m.len * MIC_RATE / TEXT_CHARS_PER_S);
-        }
+        s_turn.silent = true;
         ESP_LOGI(TAG, "showing message %s (%u chars)", m.id, (unsigned)m.len);
         show_reply_start(m);
         return;
@@ -1751,12 +1668,17 @@ static void check_turn(void)
     bool text = s_turn.text;
     if (t - s_turn.start_us > (text ? TEXT_TURN_CAP_US : TURN_CAP_US)) {
         ESP_LOGW(TAG, "turn hit the time cap");
+        /* A voice turn that waited out the cap on a busy agent got no reply at all. */
+        if (!text && !s_turn.nmsgs) {
+            turn_fail("NO REPLY FROM MUSE");
+            return;
+        }
         turn_done(false);
         return;
     }
     if (!s_turn.nmsgs) {
-        /* A typed turn waits as long as the agent says it's working. */
-        if (t - s_turn.chat_us > (text ? TEXT_REPLY_TIMEOUT_US : REPLY_TIMEOUT_US) && !(text && s_turn.agent_busy)) {
+        /* Wait as long as the agent says it's working; the turn cap still applies. */
+        if (t - s_turn.chat_us > (text ? TEXT_REPLY_TIMEOUT_US : REPLY_TIMEOUT_US) && !s_turn.agent_busy) {
             turn_fail("NO REPLY FROM MUSE");
         }
         return;

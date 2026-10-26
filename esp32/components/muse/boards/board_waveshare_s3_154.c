@@ -46,6 +46,7 @@
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "driver/ledc.h"
+#include "driver/spi_master.h"
 #include "driver/usb_serial_jtag.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
@@ -77,9 +78,9 @@ static const char *TAG = "board";
 #define LCD_DC GPIO_NUM_45
 #define LCD_RST GPIO_NUM_40
 #define LCD_BL GPIO_NUM_46
-/* The ST7789's GRAM is 240x320; the 240x240 glass shows rows 80-319.
- * Standard window for this panel; re-check on hardware if shifted. */
-#define LCD_Y_GAP 80
+/* GRAM is 240x320, but this module's glass is rows 0-239. Waveshare's
+ * ESP-IDF demo leaves the gap at 0. A Y gap of 80 left the top 80 rows
+ * unwritten, which showed up as static. */
 #define DRAW_BUF_LINES 32
 
 /* Shared I2C: touch, codecs, IMU. */
@@ -213,7 +214,6 @@ static lv_display_t *display_start(lv_indev_t **touch)
     }
     esp_lcd_panel_reset(s_panel);
     esp_lcd_panel_init(s_panel);
-    esp_lcd_panel_set_gap(s_panel, 0, LCD_Y_GAP);
     esp_lcd_panel_invert_color(s_panel, false);
     esp_lcd_panel_disp_on_off(s_panel, true);
 
@@ -290,6 +290,7 @@ static void set_brightness(int pct)
 static void panel_sleep(bool sleep)
 {
     esp_lcd_panel_disp_sleep(s_panel, sleep);   /* SLPIN/SLPOUT; GRAM is kept */
+    vTaskDelay(pdMS_TO_TICKS(120));             /* settle before the next command */
 }
 
 static void display_pause(bool pause)

@@ -26,8 +26,9 @@ daich/bbtalkie-waveshare-lcd154, rbouteiller/airplay-esp32 PR #90의
 | BL | 46 (LEDC 20 kHz, 10비트) |
 
 - SPI3 호스트, 40 MHz, SPI 모드 0, BGR, 16 bpp, 240×240
-- ST7789 GRAM은 240×320이라 240×240 글래스는 행 80~319를 본다.
-  그래서 Y-gap 80을 쓴다 (`LCD_Y_GAP 80`).
+- ST7789 GRAM은 240×320이지만 이 모듈의 글래스는 행 0~239다.
+  Waveshare ESP-IDF 데모와 같이 gap은 0이다. Y-gap 80은 위 80줄을
+  비워 두어 상단이 지지직으로 남았다.
 - LVGL v9, UI 태스크 코어·우선순위는 SDK 기본(`MUSE_UI_CORE`,
   `MUSE_UI_PRIORITY`), 프레임 40 ms, 더블 버퍼 필수
 - 디스플레이 슬립은 SLPIN/SLPOUT이며 GRAM은 유지된다.
@@ -100,5 +101,5 @@ daich/bbtalkie-waveshare-lcd154, rbouteiller/airplay-esp32 PR #90의
    확인할 것. 현재 코드는 DIN 11 / DOUT 12를 쓴다.
 2. **터치 swap_xy / mirror_x**: airplay-esp32 bring-up 값을 그대로 썼다.
    실물에서 축이 뒤집혀 있으면 바꿀 것.
-3. **ST7789 Y-gap 80**: 이 패널의 표준 창이지만, 화면이 밀려 보이면
-   실물에서 재확인할 것.
+3. **ST7789 gap**: 실물에서 상단 약 80px가 노이즈라 gap 0으로 맞췄다
+   (Waveshare `05_lvgl_example`과 동일). 색이 반전돼 보이면 invert를 켠다.

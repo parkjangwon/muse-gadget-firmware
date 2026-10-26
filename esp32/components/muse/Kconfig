@@ -35,6 +35,10 @@ menu "Muse"
             bool "Waveshare ESP32-S3-Touch-AMOLED-1.75 (not the 1.75C)"
             depends on IDF_TARGET_ESP32S3
 
+        config MUSE_BOARD_WAVESHARE_S3_154
+            bool "Waveshare ESP32-S3-Touch-LCD-1.54"
+            depends on IDF_TARGET_ESP32S3
+
         config MUSE_BOARD_AIPI
             bool "AIPI Lite (ESP32-S3, two buttons, no touch)"
             depends on IDF_TARGET_ESP32S3
@@ -92,6 +96,7 @@ menu "Muse"
         string
         default "waveshare_s3_175c" if MUSE_BOARD_WAVESHARE_S3_175C
         default "waveshare_s3_175" if MUSE_BOARD_WAVESHARE_S3_175
+        default "waveshare_s3_154" if MUSE_BOARD_WAVESHARE_S3_154
         default "aipi" if MUSE_BOARD_AIPI
         default "espressif_box_3" if MUSE_BOARD_ESPRESSIF_BOX_3
         default "waveshare_c6_18" if MUSE_BOARD_WAVESHARE_C6_18
@@ -166,5 +171,31 @@ menu "Muse"
             muse_chat_session.cpp is where a TTS API of your own can speak
             them. Needs PSRAM. Without it, voice notes go over Home Link's own
             session to its paired VM and replies are shown as text.
+
+    config MUSE_OPENROUTER_KEY
+        string "OpenRouter API key (for spoken replies)"
+        default ""
+        help
+            Spoken replies are fetched from OpenRouter's TTS endpoint
+            (https://openrouter.ai/api/v1/audio/speech). Leave empty to keep
+            the stock text-only replies. The key ships inside the firmware, so
+            treat it as an identifier rather than a password; use a limited
+            key if your provider supports that.
+
+    config MUSE_TTS_MODEL
+        string "OpenRouter TTS model"
+        default "hexgrad/kokoro-82m"
+        help
+            Model slug for OpenRouter's /audio/speech endpoint. Must output
+            MP3 (response_format=mp3); e.g. hexgrad/kokoro-82m. Note:
+            google/gemini-3.8-flash-lite-tts only does PCM, which this
+            firmware does not decode.
+
+    config MUSE_TTS_VOICE
+        string "OpenRouter TTS voice"
+        default "af_heart"
+        help
+            Voice for the TTS model. Which names work depends on the model;
+            see the provider's docs.
 
 endmenu

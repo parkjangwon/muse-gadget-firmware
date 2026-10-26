@@ -232,7 +232,9 @@ static lv_display_t *display_start(lv_indev_t **touch)
             .hor_res = LCD_RES,
             .ver_res = LCD_RES,
             .buffer_height = DRAW_BUF_LINES,
-            .use_psram = false,
+            /* Two 240x32 RGB565 buffers are 30 KB. In internal RAM they
+             * empty the DMA pool, so I2S and the tunnel task never start. */
+            .use_psram = true,
             .require_double_buffer = true,
         },
         .tear_avoid_mode = ESP_LV_ADAPTER_TEAR_AVOID_MODE_NONE,
@@ -242,9 +244,9 @@ static lv_display_t *display_start(lv_indev_t **touch)
         return NULL;
     }
 
-    /* CST816S touch on the shared I2C bus. Orientation flags from
-     * rbouteiller/airplay-esp32's bring-up of this panel; re-check the
-     * axes on hardware. */
+    /* CST816S on the shared I2C bus. The panel is rotation 0, matching
+     * Waveshare's 05_lvgl_example (no swap, no mirror). swap_xy with
+     * mirror_x turned an upward swipe into a pointer moving right. */
     esp_lcd_panel_io_handle_t tp_io;
     const esp_lcd_panel_io_i2c_config_t tp_io_cfg = ESP_LCD_TOUCH_IO_I2C_CST816S_CONFIG();
     if (esp_lcd_new_panel_io_i2c(s_i2c, &tp_io_cfg, &tp_io) != ESP_OK) {
@@ -260,8 +262,8 @@ static lv_display_t *display_start(lv_indev_t **touch)
             .interrupt = 0,
         },
         .flags = {
-            .swap_xy = 1,
-            .mirror_x = 1,
+            .swap_xy = 0,
+            .mirror_x = 0,
             .mirror_y = 0,
         },
     };

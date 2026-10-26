@@ -43,8 +43,8 @@ daich/bbtalkie-waveshare-lcd154, rbouteiller/airplay-esp32 PR #90의
 | RST | 47 |
 
 - 터치·코덱·IMU가 I2C 0번 버스를 공유한다 (내부 풀업 사용).
-- 방향 플래그: `swap_xy = 1, mirror_x = 1, mirror_y = 0`
-  (airplay-esp32 bring-up에서 가져옴, 실물에서 축 재확인 필요 — 아래 참조).
+- 방향 플래그: `swap_xy = 0, mirror_x = 0, mirror_y = 0`
+  (화면 회전 0과 같고, Waveshare `05_lvgl_example`과 같다).
 
 ## 오디오 — ES8311 + ES7210, 듀플렉스 I2S
 
@@ -99,7 +99,8 @@ daich/bbtalkie-waveshare-lcd154, rbouteiller/airplay-esp32 PR #90의
 1. **I2S DIN/DOUT 11/12**: 벤더 예제(`10_esp_sr`)는 DIN 11이 맞고,
    bbtalkie 표는 둘이 바뀐 것으로 적혀 있다. 마이크가 이상하면 하드웨어에서
    확인할 것. 현재 코드는 DIN 11 / DOUT 12를 쓴다.
-2. **터치 swap_xy / mirror_x**: airplay-esp32 bring-up 값을 그대로 썼다.
-   실물에서 축이 뒤집혀 있으면 바꿀 것.
+2. **터치 축**: `swap_xy = 1, mirror_x = 1`은 위로 쓸면 오른쪽으로
+   갔다. 회전 0에 맞춰 셋 다 0이다. 좌우가 뒤집혀 있으면 `mirror_x`만
+   다시 본다.
 3. **ST7789 gap**: 실물에서 상단 약 80px가 노이즈라 gap 0으로 맞췄다
    (Waveshare `05_lvgl_example`과 동일). 색이 반전돼 보이면 invert를 켠다.
